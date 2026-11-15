@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>datewithme – Courriel confirmé / Email confirmed</title>
+<title>datewithme</title>
 <style>
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #FFF9F7; color: #26181E; margin: 0; padding: 48px 24px; text-align: center; }
   .carte { max-width: 420px; margin: 0 auto; background: #fff; border: 1.5px solid #EBDDE0; border-radius: 20px; padding: 32px 24px; }
@@ -12,10 +12,17 @@
   p { color: #4A3A41; line-height: 1.5; margin: 6px 0; }
   .en { margin-top: 24px; padding-top: 24px; border-top: 1px solid #EBDDE0; }
   a { color: #C2315B; }
+  label { display: block; text-align: left; font-size: 14px; font-weight: 600; margin: 16px 0 6px; }
+  input { width: 100%; box-sizing: border-box; padding: 14px; font-size: 16px; border: 1.5px solid #E3D3D7; border-radius: 12px; }
+  button { margin-top: 20px; width: 100%; padding: 14px; font-size: 16px; font-weight: 600; color: #fff; background: #C2315B; border: none; border-radius: 26px; }
+  button:disabled { opacity: 0.5; }
+  .msg { margin-top: 14px; font-size: 14px; color: #C2315B; min-height: 20px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="carte">
+
+<div class="carte" id="confirme" hidden>
   <div class="coche">✓</div>
   <h1>Courriel confirmé</h1>
   <p>Ton adresse est confirmée. Retourne dans l'application <strong>datewithme</strong> pour continuer.</p>
@@ -25,5 +32,96 @@
   </div>
   <p style="margin-top:24px;font-size:13px"><a href="./">Conditions · Terms · Privacy</a></p>
 </div>
+
+<div class="carte" id="reset" hidden>
+  <h1>Nouveau mot de passe<br><span style="font-weight:400;font-size:16px">New password</span></h1>
+  <form id="form">
+    <label for="mdp">Mot de passe (8 caractères minimum) / Password (8 characters minimum)</label>
+    <input id="mdp" type="password" autocomplete="new-password">
+    <label for="mdp2">Confirmer / Confirm</label>
+    <input id="mdp2" type="password" autocomplete="new-password">
+    <button id="btn" type="submit">Enregistrer / Save</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+
+<div class="carte" id="fait" hidden>
+  <div class="coche">✓</div>
+  <h1>Mot de passe modifié</h1>
+  <p>Retourne dans l'application <strong>datewithme</strong> et connecte-toi avec ton nouveau mot de passe.</p>
+  <div class="en">
+    <h1>Password updated</h1>
+    <p>Go back to the <strong>datewithme</strong> app and sign in with your new password.</p>
+  </div>
+</div>
+
+<div class="carte" id="expire" hidden>
+  <h1>Lien expiré</h1>
+  <p>Ce lien n'est plus valide. Retourne dans l'application et demande un nouveau lien.</p>
+  <div class="en">
+    <h1>Link expired</h1>
+    <p>This link is no longer valid. Go back to the app and request a new one.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://iqojfrrzeegheorllikx.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_XkWFKVPOenNpq9R4gyHbww_BCDSY__u_CLE_ANON';
+
+  const show = (id) => { document.getElementById(id).hidden = false; };
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const query = new URLSearchParams(location.search);
+  const erreur = hash.get('error') || hash.get('error_description') || query.get('error');
+  const accessToken = hash.get('access_token');
+  const refreshToken = hash.get('refresh_token');
+
+  if (erreur) {
+    show('expire');
+  } else if (hash.get('type') === 'recovery' && accessToken && refreshToken) {
+    show('reset');
+    history.replaceState(null, '', location.pathname);
+
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('btn');
+      const mdp = document.getElementById('mdp').value;
+      const mdp2 = document.getElementById('mdp2').value;
+      msg.textContent = '';
+
+      if (mdp.length < 8) {
+        msg.textContent = '8 caractères minimum / 8 characters minimum';
+        return;
+      }
+      if (mdp !== mdp2) {
+        msg.textContent = 'Les mots de passe ne correspondent pas / Passwords do not match';
+        return;
+      }
+
+      btn.disabled = true;
+      const s = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      if (s.error) {
+        document.getElementById('reset').hidden = true;
+        show('expire');
+        return;
+      }
+      const u = await client.auth.updateUser({ password: mdp });
+      if (u.error) {
+        msg.textContent = 'Impossible de changer le mot de passe. Réessaie / Could not update the password. Try again.';
+        btn.disabled = false;
+        return;
+      }
+      document.getElementById('reset').hidden = true;
+      show('fait');
+    });
+  } else {
+    show('confirme');
+  }
+</script>
 </body>
 </html>
