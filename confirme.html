@@ -17,6 +17,7 @@
   button { margin-top: 20px; width: 100%; padding: 14px; font-size: 16px; font-weight: 600; color: #fff; background: #C2315B; border: none; border-radius: 26px; }
   button:disabled { opacity: 0.5; }
   .msg { margin-top: 14px; font-size: 14px; color: #C2315B; min-height: 20px; }
+  .detail { margin-top: 18px; font-size: 12px; color: #6A5860; word-break: break-word; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -62,63 +63,75 @@
     <h1>Link expired</h1>
     <p>This link is no longer valid. Go back to the app and request a new one.</p>
   </div>
+  <div class="detail" id="detail"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   const SUPABASE_URL = 'https://iqojfrrzeegheorllikx.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_XkWFKVPOenNpq9R4gyHbww_BCDSY__u';
+  const SUPABASE_ANON_KEY = 'sb_publishable_XkWFKVPOenNpq9R4gyHbww_BCDSY__u';
 
   const show = (id) => { document.getElementById(id).hidden = false; };
+  const afficherExpire = (detail) => {
+    document.getElementById('reset').hidden = true;
+    document.getElementById('detail').textContent = detail ? 'Détail : ' + detail : '';
+    show('expire');
+  };
+
   const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
   const query = new URLSearchParams(location.search);
-  const erreur = hash.get('error') || hash.get('error_description') || query.get('error');
+  const erreur =
+    hash.get('error_description') || hash.get('error') ||
+    query.get('error_description') || query.get('error');
   const accessToken = hash.get('access_token');
   const refreshToken = hash.get('refresh_token');
 
   if (erreur) {
-    show('expire');
+    afficherExpire('lien : ' + erreur);
   } else if (hash.get('type') === 'recovery' && accessToken && refreshToken) {
     show('reset');
     history.replaceState(null, '', location.pathname);
 
-    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    });
+    if (!window.supabase) {
+      afficherExpire('la librairie Supabase ne s\'est pas chargée');
+    } else {
+      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      });
 
-    document.getElementById('form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const msg = document.getElementById('msg');
-      const btn = document.getElementById('btn');
-      const mdp = document.getElementById('mdp').value;
-      const mdp2 = document.getElementById('mdp2').value;
-      msg.textContent = '';
+      document.getElementById('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById('msg');
+        const btn = document.getElementById('btn');
+        const mdp = document.getElementById('mdp').value;
+        const mdp2 = document.getElementById('mdp2').value;
+        msg.textContent = '';
 
-      if (mdp.length < 8) {
-        msg.textContent = '8 caractères minimum / 8 characters minimum';
-        return;
-      }
-      if (mdp !== mdp2) {
-        msg.textContent = 'Les mots de passe ne correspondent pas / Passwords do not match';
-        return;
-      }
+        if (mdp.length < 8) {
+          msg.textContent = '8 caractères minimum / 8 characters minimum';
+          return;
+        }
+        if (mdp !== mdp2) {
+          msg.textContent = 'Les mots de passe ne correspondent pas / Passwords do not match';
+          return;
+        }
 
-      btn.disabled = true;
-      const s = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-      if (s.error) {
+        btn.disabled = true;
+        const s = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (s.error) {
+          afficherExpire('session : ' + s.error.message);
+          return;
+        }
+        const u = await client.auth.updateUser({ password: mdp });
+        if (u.error) {
+          msg.textContent = 'Erreur : ' + u.error.message;
+          btn.disabled = false;
+          return;
+        }
         document.getElementById('reset').hidden = true;
-        show('expire');
-        return;
-      }
-      const u = await client.auth.updateUser({ password: mdp });
-      if (u.error) {
-        msg.textContent = 'Impossible de changer le mot de passe. Réessaie / Could not update the password. Try again.';
-        btn.disabled = false;
-        return;
-      }
-      document.getElementById('reset').hidden = true;
-      show('fait');
-    });
+        show('fait');
+      });
+    }
   } else {
     show('confirme');
   }
